@@ -1,0 +1,52 @@
+# //////////////////////////////////////////////////////
+#                     GENERAL INPUT 
+# //////////////////////////////////////////////////////
+
+# -----------------------
+#         CASE 
+# -----------------------
+
+country: None
+sector: None
+region: None
+site: None
+
+# -----------------------
+#         BASE 
+# -----------------------
+
+gas: &gas co2
+limit: &limit 500
+year: &year 2024
+threshold: &threshold 30
+
+# PATHS
+out_csv_path: "./output/csv/"
+out_fig_path: "./output/fig/"
+in_csv_path: "./inpout/csv/"
+
+# API
+source_api_url: "https://api.climatetrace.org/v6/assets?"
+url_region_api: "https://nominatim.openstreetmap.org/reverse?"
+language_region_api: "en"
+
+# COLUMNS
+source_id_col: &source_id_col "id"
+source_emit_col: &source_emit_col "emission"
+source_lat_col: &source_lat_col "lat_source"
+sourcee_lon_col: &sourcee_lon_col "lon_source"
+source_name_col: &source_name_col "name"
+
+sink_country_col: &sink_country_col "country"
+sink_region_col: &sink_region_col "subnational1"
+sink_cover_col: &sink_cover_col "umd_tree_cover_extent_2000__ha"
+sink_intake_col: &sink_intake_col "gfw_forest_carbon_net_flux__Mg_CO2_yr-1"
+sink_threshold_col: &sink_threshold_col "umd_tree_cover_density_2000__threshold"
+sink_efficiency_col: &sink_efficiency_col "intake_x_hectar"
+
+# FILES
+source_raw: &source_raw "source_raw.csv"
+sink_raw: &sink_raw "sink_raw.csv"
+forest_country: &forest_country "forest_country.csv"
+forest_region: &forest_region "forest_region.csv"
+forest_result: &forest_result "forest_result.csv"
