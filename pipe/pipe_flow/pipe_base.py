@@ -42,13 +42,19 @@ class Config:
     source_lat_col: str
     source_lon_col: str
     source_name_col: str
+    source_country_col: str
+    source_region_col: str
 
     sink_country_col: str
     sink_region_col: str
+    sink_site_col: str
     sink_cover_col: str
     sink_intake_col: str
     sink_threshold_col: str
-    sink_efficiency_col: str
+    sink_region_efficiency_col: str
+    sink_cover_country_col: str
+    sink_intake_country_col: str
+    sink_country_efficiency_col: str
 
     # Files
     source_raw: str
@@ -56,6 +62,7 @@ class Config:
     forest_country: str
     forest_region: str
     forest_result: str
+    forest_full: str
 
     @classmethod
     def from_dict(cls, data):
