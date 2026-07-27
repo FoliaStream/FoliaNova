@@ -1,0 +1,181 @@
+# -- CONFIG FILE --
+# PAGES
+pages:
+  - HOME
+  - OVERVIEW
+  - SIMULATOR
+
+
+# MAIN PAGE
+main_page: HOME
+
+
+# COUNTRIES TO SELECT
+countries:
+  - Afghanistan
+  - Albania
+  - Algeria
+  - Angola
+  - Argentina
+  - Armenia
+  - Australia
+  - Austria
+  - Azerbaijan
+  - Bangladesh
+  - Belarus
+  - Belgium
+  - Benin
+  - Bhutan
+  - Bolivia
+  - Bosnia and Herzegovina
+  - Botswana
+  - Brazil
+  - Brunei
+  - Bulgaria
+  - Burkina Faso
+  - Burundi
+  - Cambodia
+  - Cameroon
+  - Canada
+  - Central African Republic
+  - Chad
+  - Chile
+  - China
+  - Colombia
+  - Costa Rica
+  - Croatia
+  - Cuba
+  - Czechia
+  - Côte d'Ivoire
+  - Democratic Republic of the Congo
+  - Denmark
+  - Djibouti
+  - Dominican Republic
+  - Ecuador
+  - Egypt
+  - El Salvador
+  - Equatorial Guinea
+  - Eritrea
+  - Estonia
+  - Faroe Islands
+  - Fiji
+  - Finland
+  - France
+  - French Guiana
+  - Gabon
+  - Gambia
+  - Georgia
+  - Germany
+  - Ghana
+  - Greece
+  - Guadeloupe
+  - Guatemala
+  - Guinea
+  - Guinea-Bissau
+  - Guyana
+  - Haiti
+  - Honduras
+  - Hungary
+  - Iceland
+  - India
+  - Indonesia
+  - Iran
+  - Iraq
+  - Ireland
+  - Italy
+  - Japan
+  - Jordan
+  - Kazakhstan
+  - Kenya
+  - Kosovo
+  - Kyrgyzstan
+  - Laos
+  - Latvia
+  - Lebanon
+  - Liberia
+  - Lithuania
+  - Luxembourg
+  - Madagascar
+  - Malawi
+  - Malaysia
+  - Mali
+  - Malta
+  - Martinique
+  - Mauritania
+  - Micronesia
+  - Mongolia
+  - Morocco
+  - Mozambique
+  - Myanmar
+  - México
+  - Namibia
+  - Nepal
+  - Netherlands
+  - New Caledonia
+  - New Zealand
+  - Nicaragua
+  - Niger
+  - Nigeria
+  - North Korea
+  - Norway
+  - Oman
+  - Pakistan
+  - Palestine
+  - Panama
+  - Papua New Guinea
+  - Paraguay
+  - Peru
+  - Philippines
+  - Poland
+  - Portugal
+  - Republic of the Congo
+  - Romania
+  - Russia
+  - Rwanda
+  - Réunion
+  - Saint-Barthélemy
+  - Saudi Arabia
+  - Senegal
+  - Serbia
+  - Sierra Leone
+  - Slovakia
+  - Slovenia
+  - Solomon Islands
+  - Somalia
+  - South Africa
+  - South Korea
+  - South Sudan
+  - Spain
+  - Sri Lanka
+  - Sudan
+  - Suriname
+  - Swaziland
+  - Sweden
+  - Switzerland
+  - Syria
+  - São Tomé and Príncipe
+  - Tajikistan
+  - Tanzania
+  - Thailand
+  - Timor-Leste
+  - Togo
+  - Tunisia
+  - Turkey
+  - Turkmenistan
+  - Uganda
+  - Ukraine
+  - United Arab Emirates
+  - United Kingdom
+  - United States
+  - Uruguay
+  - Uzbekistan
+  - Vanuatu
+  - Venezuela
+  - Vietnam
+  - Virgin Islands, U.S.
+  - Yemen
+  - Zambia
+  - Zimbabwe
+  - Åland
+
+forest_path : "./input/csv/forest_full.csv"
