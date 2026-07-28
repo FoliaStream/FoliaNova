@@ -3,9 +3,9 @@ import os
 
 import pandas as pd 
 
-from pipe_flow.pipe_base import PipelineBase
-from functions.functions_I import setup_dir, create_folder, source_import_api, source_edit, csv_import, sink_edit, forest_calculation
-from functions.fe_functions import country_name_to_alpha3
+from pipe.pipe_flow.pipe_base import PipelineBase
+from pipe.functions.functions_I import setup_dir, create_folder, source_import_api, source_edit, csv_import, sink_edit, forest_calculation
+from pipe.functions.functions_II import country_name_to_alpha3
 
 
 import warnings

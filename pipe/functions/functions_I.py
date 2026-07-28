@@ -5,7 +5,7 @@ import requests
 import time
 
 from loguru import logger
-from functions.functions_II import request_url, get_region, hectares_to_circle_radius
+from pipe.functions.functions_II import request_url, get_region, hectares_to_circle_radius
 
 import pandas as pd 
 
