@@ -42,7 +42,7 @@ elif selected_page == "OVERVIEW":
 # --- LOGO-TITLE ---
 col1,col2,col3 = st.columns([1,2,1])
 with col2:
-    st.image(f"{os.getcwd()}/LOGO.png")
+    st.image(f"{os.getcwd()}/logo.png")
 
 st.divider()
 
