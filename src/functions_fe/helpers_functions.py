@@ -1,7 +1,29 @@
 import pandas as pd
+
+import os
+import pycountry
 import requests
-from src.functions_fe.country_names_convert import country_name_to_alpha3
+
 from requests.models import PreparedRequest
+import requests
+
+# from src.functions_fe.helpers_functions import country_name_to_alpha3
+from requests.models import PreparedRequest
+
+def load_regions(country):
+
+    regional_info = pd.read_csv(f"{os.getcwd()}/input/csv/regional_data.csv", index_col='Unnamed: 0')
+    country_regions = [regional_info[regional_info['country']==country]]
+    country_regions = pd.DataFrame(country_regions[0])
+
+    regions_names = country_regions['subnational1'].unique().tolist()
+    regions_lat = country_regions['lat'].unique().tolist()
+    regions_lon = country_regions['lon'].unique().tolist()
+
+    return regions_names, regions_lon, regions_lat
+
+
+
 
 # Generate url for API query 
 def request_url(url, params):
@@ -27,6 +49,25 @@ def source_import_api(url, params):
     data = response.json()['assets']
     
     return data
+
+
+def country_name_to_alpha3(name):
+    try:
+        return pycountry.countries.lookup(name).alpha_3
+    except LookupError:
+        return None 
+    
+
+def alpha3_to_country_name(alpha3):
+    try:
+        country = pycountry.countries.get(alpha_3=alpha3.upper())
+        if country:
+            return country.name
+        else:
+            return None
+    except KeyError:
+        return None
+
 
 # Load source data
 def load_source(country, years):
@@ -85,3 +126,33 @@ def load_source(country, years):
     master_df = master_df[metadata_cols + emission_cols]
 
     return master_df
+
+
+
+# Generate url for API query 
+def request_url(url, params):
+    
+    request = PreparedRequest()
+    request.prepare_url(url, params)
+
+    return request.url
+
+# Import source data from API
+def source_import_api(url, params):
+
+    # Merge url and params in url for query
+    url_query = request_url(url, params)
+
+    # Perform request
+    response = requests.get(url_query)
+
+    # if response == 200:
+        # Success
+
+    data = response.json()['assets']
+    
+    return data
+
+
+
+

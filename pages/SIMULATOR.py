@@ -6,18 +6,18 @@ import numpy as np
 
 import os
 import yaml
-import folium
 
 from streamlit_plotly_events import plotly_events
-from streamlit_folium import folium_static, st_folium
 
+from src.functions_fe.simulator_functions import compute_zoom_scale, region_label_fontsize, filter_valid_coordinates, generate_circle_coords, build_region_circle_traces_data, emission_to_marker_size, get_sector_summary
 from src.functions_fe.sidebar import setup_sidebar
 from src.functions_fe.styles import HIDE_SIDEBAR_NAV
-from src.functions_fe.country_names_convert import country_name_to_alpha3
-from src.functions_fe.load_regions import load_regions
+from src.functions_fe.helpers_functions import country_name_to_alpha3, load_regions
+# from src.functions_fe.load_regions import load_regions
 from pipe.functions.functions_I import source_import_api
 from pipe.functions.functions_II import hectares_to_circle_radius
 from pipe.streamain import main
+
 
 
 ################
@@ -104,190 +104,21 @@ if "df_result" not in st.session_state:
 # --- FIGURE BUILDERS ---
 ##########################
 
-def min_pairwise_distance(regions_lon, regions_lat):
-    """
-    Smallest angular distance between any two regions (longitude compressed
-    by cos(latitude) so it approximates real ground distance). Used to make
-    sure the closest two region labels don't overlap, independent of how
-    large the country is overall.
-    """
-    n = len(regions_lon)
-    if n < 2:
-        return None
 
-    mean_lat = np.mean(regions_lat)
-    cos_lat = np.cos(np.radians(mean_lat))
+# @st.cache_data(show_spinner=False, ttl=60 * 60)  # cache for 1h
+# Import pipeline base
 
-    min_dist = np.inf
-    for i in range(n):
-        for j in range(i + 1, n):
-            dlon = (regions_lon[i] - regions_lon[j]) * cos_lat
-            dlat = regions_lat[i] - regions_lat[j]
-            dist = np.sqrt(dlon ** 2 + dlat ** 2)
-            if dist < min_dist:
-                min_dist = dist
-
-    return min_dist
-
-
-def compute_zoom_scale(regions_lon, regions_lat, min_scale=1.3, max_scale=9.0, padding=1.3):
-    """
-    Derives an orthographic 'scale' value from two competing constraints:
-
-    1. FIT: the whole country's region spread should stay on screen
-       (large bounding box -> zoom out).
-    2. SEPARATE: the two closest regions should stay far enough apart that
-       their text labels don't overlap (tightly clustered regions -> zoom in).
-
-    We take whichever constraint asks for MORE zoom (the larger of the two
-    scales), then clamp to [min_scale, max_scale] so it never goes absurdly
-    far in either direction.
-    """
-    if not regions_lon or not regions_lat or len(regions_lon) < 2:
-        return 4.0
-
-    lon_span = max(regions_lon) - min(regions_lon)
-    lat_span = max(regions_lat) - min(regions_lat)
-    mean_lat = np.mean(regions_lat)
-    lon_span_adjusted = lon_span * np.cos(np.radians(mean_lat))
-
-    fit_span = max(lon_span_adjusted, lat_span, 0.5) * padding
-    scale_fit = 40.0 / fit_span
-
-    nn_dist = min_pairwise_distance(regions_lon, regions_lat)
-    scale_separate = (6.0 / nn_dist) if nn_dist and nn_dist > 0 else scale_fit
-
-    scale = max(scale_fit, scale_separate)
-    return float(np.clip(scale, min_scale, max_scale))
-
-
-def region_label_fontsize(n_regions, base_size=13, min_size=8):
-    """Shrinks label text as region count grows, to ease crowding further."""
-    size = base_size - (n_regions // 6)
-    return max(size, min_size)
-
-
-def filter_valid_coordinates(names, lons, lats):
-    """
-    Drops any region whose lon/lat isn't a finite real number (NaN, inf, or
-    missing/None from source data). Keeps the three lists aligned by index.
-    """
-    clean_names, clean_lons, clean_lats = [], [], []
-    dropped = []
-
-    for name, lon, lat in zip(names, lons, lats):
-        try:
-            lon_f, lat_f = float(lon), float(lat)
-        except (TypeError, ValueError):
-            dropped.append(name)
-            continue
-
-        if np.isfinite(lon_f) and np.isfinite(lat_f):
-            clean_names.append(name)
-            clean_lons.append(lon_f)
-            clean_lats.append(lat_f)
-        else:
-            dropped.append(name)
-
-    return clean_names, clean_lons, clean_lats, dropped
-
-
-def generate_circle_coords(center_lon, center_lat, radius_deg, n_points=48):
-    """
-    Generates an approximate circle (in lon/lat degrees) around a centroid.
-    Longitude is compressed by cos(latitude) so the circle looks round on
-    the globe rather than stretched near the poles.
-    """
-    cos_lat = np.cos(np.radians(center_lat))
-    cos_lat = cos_lat if abs(cos_lat) > 1e-6 else 1e-6  # avoid divide-by-zero near the poles
-
-    thetas = np.linspace(0, 2 * np.pi, n_points)
-    lons = center_lon + (radius_deg / cos_lat) * np.cos(thetas)
-    lats = center_lat + radius_deg * np.sin(thetas)
-    return lons.tolist(), lats.tolist()
-
-
-def build_region_circle_traces_data(regions_lon, regions_lat, min_radius=0.15, max_radius=2.5,
-                                     shrink_factor=0.4):
-    """
-    Builds one combined lon/lat line array (with None gaps) containing a
-    circle around every region's centroid, sized from that region's
-    distance to its nearest neighbor so dense clusters don't overlap.
-    """
-    n = len(regions_lon)
-    all_lons, all_lats = [], []
-
-    for i in range(n):
-        if n > 1:
-            cos_lat = np.cos(np.radians(regions_lat[i]))
-            nearest = min(
-                np.sqrt(((regions_lon[i] - regions_lon[j]) * cos_lat) ** 2 +
-                         (regions_lat[i] - regions_lat[j]) ** 2)
-                for j in range(n) if j != i
-            )
-            radius = np.clip(nearest * shrink_factor, min_radius, max_radius)
-        else:
-            radius = min_radius
-
-        circ_lon, circ_lat = generate_circle_coords(regions_lon[i], regions_lat[i], radius)
-        all_lons.extend(circ_lon)
-        all_lats.extend(circ_lat)
-        all_lons.append(None)
-        all_lats.append(None)
-
-    return all_lons, all_lats
-
-
-def emission_to_marker_size(emissions, all_emissions, min_size=6, max_size=22):
-    """
-    Scales a plant's marker size by its emissions, relative to the other
-    plants in the same result set (log scale, since emissions volumes
-    usually span orders of magnitude within one sector). Falls back to a
-    flat mid-size if all values are equal or the set is too small to scale.
-    """
-    if not all_emissions or max(all_emissions) <= 0:
-        return (min_size + max_size) / 2
-
-    log_vals = np.log10(np.clip(all_emissions, 1e-6, None))
-    lo, hi = log_vals.min(), log_vals.max()
-
-    if hi - lo < 1e-9:
-        return (min_size + max_size) / 2
-
-    log_e = np.log10(max(emissions, 1e-6))
-    t = (log_e - lo) / (hi - lo)
-    return min_size + t * (max_size - min_size)
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60)  # cache for 1h
 def load_pipe_base_config():
-    """
-    Loads pipe/config/base.yaml — the same static settings PipelineBase.parse_config()
-    reads before merging in the per-run case.yaml. Shared by fetch_plants_for_sector()
-    and the RUN section below, so column names (source_lat_col, etc.) live in one
-    place instead of being hardcoded twice.
-    """
+
     with open(f"{os.getcwd()}/pipe/config/base.yaml", "r") as f:
+
         return yaml.safe_load(f)
 
 
-@st.cache_data(show_spinner=False, ttl=60 * 60)  # cache for 1h
+# @st.cache_data(show_spinner=False, ttl=60 * 60)  # cache for 1h
+# same as call_source_load but skip get_region to avoid wait time API
 def fetch_plants_for_sector(country, sector):
-    """
-    Pulls emission source ("plant") locations for a given country + sector
-    directly from the pipeline's own source API — the same call
-    call_source_load() makes in pipe/pipe_flow/pipe_flow.py, and the same
-    raw asset shape source_edit() parses in pipe/functions/functions_I.py
-    (Id, Name, EmissionsSummary[0].EmissionsQuantity, Centroid.Geometry).
 
-    Deliberately skips get_region() here — that does a reverse-geocoding
-    HTTP call PER PLANT with a 1s sleep between calls (see source_edit),
-    which is fine for a one-off pipeline run but far too slow for an
-    interactive map with potentially hundreds of plants. Region tagging
-    still happens later, inside the actual RUN step, exactly as before.
-
-    Returns a list of dicts: {"name", "lat", "lon", "emissions"}.
-    """
     try:
         pipe_config = load_pipe_base_config()
 
@@ -323,8 +154,9 @@ def fetch_plants_for_sector(country, sector):
     return plants
 
 
+# Globe figure
 def build_world_figure():
-    """Full globe with highlighted countries, no zoom."""
+
     fig = go.Figure()
 
     fig.add_trace(go.Choropleth(
@@ -372,6 +204,7 @@ def build_world_figure():
     return fig
 
 
+# Globe zoomed in the selected country figure
 def build_country_figure(regions_names, regions_lon, regions_lat, center_lon, center_lat, scale,
                           plants=None, result_circle=None):
     """
@@ -393,8 +226,7 @@ def build_country_figure(regions_names, regions_lon, regions_lat, center_lon, ce
 
     label_size = region_label_fontsize(len(regions_names))
 
-    # Context layer: still clickable so the user can jump straight to another
-    # highlighted country without going back to the world view first.
+    # Context layer: still clickable so the user can jump straight to another highlighted country without going back to the world view first.
     fig.add_trace(go.Choropleth(
         locations=highlighted_countries_codes,
         z=[1] * len(highlighted_countries_codes),
@@ -528,31 +360,7 @@ def build_country_figure(regions_names, regions_lon, regions_lat, center_lon, ce
     return fig
 
 
-##########################
-# --- HELPER: GET SECTOR SUMMARY ---
-##########################
 
-def get_sector_summary(country, sector, plants):
-    """
-    Generate summary statistics for the selected country and sector.
-    Returns a dict with key metrics.
-    """
-    if not plants:
-        return None
-    
-    total_emissions = sum(p['emissions'] for p in plants)
-    num_plants = len(plants)
-    avg_emissions = total_emissions / num_plants if num_plants > 0 else 0
-    max_emissions = max(p['emissions'] for p in plants) if plants else 0
-    min_emissions = min(p['emissions'] for p in plants) if plants else 0
-    
-    return {
-        'total_emissions': total_emissions,
-        'num_plants': num_plants,
-        'avg_emissions': avg_emissions,
-        'max_emissions': max_emissions,
-        'min_emissions': min_emissions,
-    }
 
 
 ##########################

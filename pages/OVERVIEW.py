@@ -13,9 +13,8 @@ import folium
 from streamlit_plotly_events import plotly_events
 from src.functions_fe.sidebar import setup_sidebar
 from src.functions_fe.styles import HIDE_SIDEBAR_NAV, METRICS_BOX_STYLE
-from src.functions_fe.country_names_convert import country_name_to_alpha3
-from src.functions_fe.load_source import load_source
-from src.functions_fe.forest_analytics import forest_metrics, detect_deforestation_hotspots, carbon_forecast, get_annual_emissions
+from src.functions_fe.helpers_functions import country_name_to_alpha3, load_source
+from src.functions_fe.overview_functions import forest_metrics, detect_deforestation_hotspots, carbon_forecast, get_annual_emissions
 
 
 
