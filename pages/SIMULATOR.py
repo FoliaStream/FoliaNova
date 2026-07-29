@@ -1055,8 +1055,7 @@ with col_globe:
     # Single chart call
     # Key includes selected_region/selected_site (not just view/country/sector/
     # result_circle), so EVERY distinct click — country, region, or plant —
-    # forces plotly_events to remount cleanly. Without region/site here, a
-    # region or plant click leaves the key unchanged, so the component keeps
+    # forces plotly_events to remount cleanly. Without region/site here, a # region or plant click leaves the key unchanged, so the component keeps
     # returning that SAME click on every later rerun. Combined with the
     # click handlers below now calling st.rerun() unconditionally, that
     # created a genuine infinite loop: click -> rerun -> same stale click
