@@ -1055,7 +1055,8 @@ with col_globe:
     # Single chart call
     # Key includes selected_region/selected_site (not just view/country/sector/
     # result_circle), so EVERY distinct click — country, region, or plant —
-    # forces plotly_events to remount cleanly. Without region/site here, a region or plant click leaves the key unchanged, so the component keeps
+    # forces plotly_events to remount cleanly. Without region/site here, a
+    # region or plant click leaves the key unchanged, so the component keeps
     # returning that SAME click on every later rerun. Combined with the
     # click handlers below now calling st.rerun() unconditionally, that
     # created a genuine infinite loop: click -> rerun -> same stale click
@@ -1152,7 +1153,10 @@ with col_sidebar:
     
     DEG_PER_KM = 1 / 111.32
     
-    if selected_country != 'None' and selected_sector != 'Select sector':
+    if selected_country != 'None' and selected_sector != 'Select sector' and selected_region == 'None' and selected_site == 'None':
+        st.info("Click a region label or a plant marker on the map to enable RUN.")
+
+    if selected_country != 'None' and selected_sector != 'Select sector' and (selected_region != 'None' or selected_site != 'None'):
         if st.button("RUN", use_container_width=True):
             with open(f"{os.getcwd()}/pipe/config/case.yaml", 'w') as f:
                 data = {
