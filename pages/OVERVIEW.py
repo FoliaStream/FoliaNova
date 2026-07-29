@@ -8,7 +8,6 @@ import plotly.express as px
 
 import os
 import yaml 
-import folium
 
 from streamlit_plotly_events import plotly_events
 from src.functions_fe.sidebar import setup_sidebar
