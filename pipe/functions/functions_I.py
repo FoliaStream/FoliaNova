@@ -231,6 +231,7 @@
 #         out_site = pd.DataFrame()
 
 #     return out_country, out_region, out_site
+
 import os 
 import shutil
 import errno
@@ -372,22 +373,76 @@ def csv_import(path):
     return df
 
 
+def _normalize_region_name(name):
+    """
+    Lowercases, strips, and collapses whitespace so two region names that
+    differ only in casing/spacing compare equal. Used by _match_region_name
+    below.
+    """
+    if name is None:
+        return ""
+    return " ".join(str(name).strip().lower().split())
+
+
+def _match_region_name(target, candidates, fuzzy_cutoff=0.75):
+    """
+    Finds which of `candidates` (the sink dataset's own region names)
+    best corresponds to `target` (the region name get_region() returned
+    for a site's coordinates via reverse geocoding).
+
+    The two names rarely match byte-for-byte — different admin-level
+    phrasing, "X Province" vs "X", accents, etc. — so this tries,
+    in order:
+        1. Exact match (normalized: case/whitespace-insensitive)
+        2. Two-way substring containment (either name contains the other)
+        3. Fuzzy string similarity (difflib), only accepted above fuzzy_cutoff
+
+    Returns the matching candidate as it actually appears in `candidates`
+    (so it can be used directly to filter the dataframe), or None if
+    nothing cleared the fuzzy_cutoff threshold.
+    """
+    if not target:
+        return None
+
+    target_norm = _normalize_region_name(target)
+    candidates = list(candidates)
+    norm_to_original = {_normalize_region_name(c): c for c in candidates}
+
+    # 1. Exact match (normalized)
+    if target_norm in norm_to_original:
+        return norm_to_original[target_norm]
+
+    # 2. Two-way substring containment
+    for norm_candidate, original in norm_to_original.items():
+        if not norm_candidate:
+            continue
+        if norm_candidate in target_norm or target_norm in norm_candidate:
+            return original
+
+    # 3. Fuzzy fallback
+    close = difflib.get_close_matches(target_norm, list(norm_to_original.keys()), n=1, cutoff=fuzzy_cutoff)
+    if close:
+        return norm_to_original[close[0]]
+
+    return None
+
+
 # Edit sink data
 def sink_edit(sink, country, region, site, threshold, country_col, region_col, site_col, cover_col, intake_col, efficiency_col, threshold_col, site_region, country_efficiency_col):
-    
-    import difflib
-    
+
     sink_out = pd.DataFrame(sink)
 
     # Filter threshold
     sink_out = sink_out[sink_out[threshold_col] == threshold]
 
     # Extract columns
-    sink_out = sink_out[[country_col, region_col, threshold_col, cover_col, intake_col]]
+    sink_out = sink_out[[country_col, region_col, threshold_col, cover_col,  intake_col]]
+
 
     # Sink hectar effifiency compute
     sink_out[efficiency_col] = sink_out[intake_col]/sink_out[cover_col]
-    sink_out[country_efficiency_col] = sink_out[intake_col].sum()/sink_out[cover_col].sum()
+    sink_out[country_efficiency_col] = sink_out[intake_col].sum()/sink_out[cover_col].sum() # so wrong... 
+
 
     # Filter area
     if country != 'None':
@@ -406,54 +461,36 @@ def sink_edit(sink, country, region, site, threshold, country_col, region_col, s
             sink_out_site = pd.DataFrame(sink_out_region)
             sink_out_site[site_col] = site 
         else:
-            # More robust region matching
-            sink_out_site = pd.DataFrame(sink_out)
-            
-            # Get unique region names from the dataset
-            dataset_regions = sink_out_site[region_col].unique().tolist()
-            
-            # Try exact match first
-            matched_regions = [r for r in dataset_regions if r == site_region]
-            
-            # If no exact match, try substring matching (both directions)
-            if not matched_regions:
-                matched_regions = [r for r in dataset_regions if site_region in r or r in site_region]
-            
-            # If still no match, try fuzzy matching
-            if not matched_regions:
-                # Find the closest match using difflib
-                closest_matches = difflib.get_close_matches(site_region, dataset_regions, n=1, cutoff=0.6)
-                if closest_matches:
-                    matched_regions = [closest_matches[0]]
-                    logger.warning(f"Using fuzzy match: '{site_region}' -> '{closest_matches[0]}'")
-            
-            # Apply the filter
-            if matched_regions:
-                # Filter by any of the matched region names
-                pattern = '|'.join(matched_regions)
-                sink_out_site = sink_out_site[sink_out_site[region_col].str.contains(pattern, case=False, na=False)]
-            else:
-                # No matches found - raise a clear error instead of failing silently
-                available_regions = ', '.join(dataset_regions[:10]) + ('...' if len(dataset_regions) > 10 else '')
+            # site_region is the region name get_region() returned for this
+            # site's coordinates (reverse-geocoded from OpenStreetMap). It
+            # very often does NOT match the sink dataset's own region_col
+            # values byte-for-byte, so resolve it against the dataset's
+            # actual region names first instead of filtering blindly —
+            # otherwise a naming mismatch silently produces zero rows here,
+            # which then crashes much later in forest_calculation() with an
+            # unhelpful IndexError on sink_site.iloc[0].
+            available_regions = sink_out[region_col].dropna().unique()
+            matched_region = _match_region_name(site_region, available_regions)
+
+            if matched_region is None:
                 raise ValueError(
-                    f"No region match found for '{site_region}'. "
-                    f"Available regions (sample): {available_regions}. "
-                    f"Please check the region name or adjust the matching logic."
+                    f"Could not match site '{site}'s detected region "
+                    f"('{site_region}') to any region in the sink/forest "
+                    f"dataset. Available regions for this country: "
+                    f"{sorted(str(r) for r in available_regions)}. "
+                    f"This usually means get_region() returned a name that's "
+                    f"too different from your dataset's own naming — check "
+                    f"the two side by side and consider adding an alias."
                 )
-            
-            # If after filtering we still have no data, raise a clear error
-            if sink_out_site.empty:
-                raise ValueError(
-                    f"No sink data found for region '{site_region}'. "
-                    f"This will cause errors in forest calculation. "
-                    f"Please check your region name or the sink dataset."
-                )
-            
-            sink_out_site[site_col] = site     
+
+            sink_out_site = sink_out[sink_out[region_col] == matched_region]
+            sink_out_site[site_col] = site
     else:
         sink_out_site = pd.DataFrame()  
 
+
     return sink_out_country, sink_out_region, sink_out_site
+
 
 
 #---------------------------
@@ -466,10 +503,6 @@ def forest_calculation(source_country, source_region, source_site, country, regi
         out_country = pd.DataFrame(source_country)
         out_country['new_forest'] = pd.Series()
         out_country['new_area_radius'] = pd.Series()
-
-        # Check if sink_country is empty
-        if sink_country.empty:
-            raise ValueError("sink_country is empty - cannot calculate forest for country level")
 
         for i, row in out_country.iterrows():
             out_country.at[i,'new_forest'] = row[source_emissision_col] / abs(sink_country[sink_country_efficiency_col].iloc[0])
@@ -485,10 +518,6 @@ def forest_calculation(source_country, source_region, source_site, country, regi
         out_region['new_forest'] = pd.Series()
         out_region['new_area_radius'] = pd.Series()
 
-        # Check if sink_region is empty
-        if sink_region.empty:
-            raise ValueError("sink_region is empty - cannot calculate forest for region level")
-
         for i, row in out_region.iterrows():
             out_region.at[i,'new_forest'] = row[source_emissision_col] / abs(sink_region[sink_region_efficiency_col].iloc[0])
         
@@ -499,17 +528,16 @@ def forest_calculation(source_country, source_region, source_site, country, regi
         
 
     if site != 'None':
+        if sink_site.empty:
+            raise ValueError(
+                f"sink_site is empty for site '{site}' — forest_calculation "
+                f"cannot compute a sink efficiency with no matching rows. "
+                f"This should have been caught earlier in sink_edit()."
+            )
+
         out_site = pd.DataFrame(source_site)
         out_site['new_forest'] = pd.Series()
         out_site['new_area_radius'] = pd.Series()
-
-        # Check if sink_site is empty
-        if sink_site.empty:
-            raise ValueError(
-                f"sink_site is empty - cannot calculate forest for site level. "
-                f"Check region matching for '{site}'. "
-                f"The sink dataset may not contain the region you're looking for."
-            )
 
         for i, row in out_site.iterrows():
             out_site.at[i,'new_forest'] = row[source_emissision_col] / abs(sink_site[sink_region_efficiency_col].iloc[0])
