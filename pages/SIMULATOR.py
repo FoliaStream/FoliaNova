@@ -30,6 +30,22 @@ st.set_page_config(page_title="FoliaNova - SIMULATOR", layout="wide")
 # --- STYLES ---
 st.markdown(HIDE_SIDEBAR_NAV, unsafe_allow_html=True)
 
+# Safety net for the plotly_events map: on top of pinning override_height /
+# override_width on the call itself, force a minimum size on the component's
+# iframe so it can never render collapsed/shrunk, even if the component's
+# own JS sizing logic hiccups on a rerun with a taller sidebar next to it.
+st.markdown(
+    """
+    <style>
+    iframe[title="streamlit_plotly_events.plotly_events"] {
+        min-height: 900px !important;
+        width: 100% !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- CONFIG ---
 with open(f"{os.getcwd()}/src/config_fe/config.yaml", "r") as config_file:
     config = yaml.safe_load(config_file)
@@ -360,15 +376,77 @@ def build_country_figure(regions_names, regions_lon, regions_lat, center_lon, ce
     return fig
 
 
-
-
-
 ##########################
 # --- LAYOUT: TWO COLUMNS ---
 ##########################
 
 # Create two columns: globe (larger) and controls/data (smaller)
 col_globe, col_sidebar = st.columns([2, 1])
+
+##########################
+# --- RIGHT COLUMN (PART 1): CONTROLS THAT MUST BE FRESH ---
+##########################
+# FIX: the sector selectbox used to live inside a single "with col_sidebar:"
+# block placed AFTER "with col_globe:" in the script. st.columns() only
+# controls where widgets are drawn on the page, not the order Python runs
+# them in — the script still executes top-to-bottom. So on the rerun
+# triggered by changing the sector, col_globe's plant-fetch code ran FIRST
+# and read the OLD st.session_state.selected_sector, and only AFTER that did
+# the selectbox update it to the new value. The globe would then keep
+# showing the previous sector's plants until some other click (e.g. picking
+# a region) forced yet another rerun that finally saw the fresh sector.
+#
+# Splitting col_sidebar into two "with" blocks — this one BEFORE col_globe,
+# and a second one AFTER it for the rest of the controls — fixes the
+# execution order while keeping the exact same visual layout (Streamlit
+# appends to a column in the order your code writes to it, regardless of
+# how many separate "with" blocks you use).
+with col_sidebar:
+    # Back button (only when in country view)
+    if st.session_state.view == "country":
+        if st.button("⬅ Back to world view", use_container_width=True):
+            st.session_state.view = "world"
+            st.session_state.selected_country = None
+            st.session_state.selected_region = None
+            st.session_state.selected_site = None
+            st.session_state.selected_sector = 'Select sector'
+            st.session_state.result_circle = None
+            st.session_state.df_result = None
+            st.rerun()
+
+    # Country/Region/Site info
+    if st.session_state.view == "country":
+        st.markdown(f"### {st.session_state.selected_country}")
+
+        # Region and site are mutually exclusive — show whichever is active.
+        if st.session_state.selected_site:
+            selection_line = f"**Plant:** {st.session_state.selected_site}"
+        elif st.session_state.selected_region:
+            selection_line = f"**Region:** {st.session_state.selected_region}"
+        else:
+            selection_line = "Click a region label or a plant marker to select one"
+
+        st.markdown(selection_line)
+        st.divider()
+
+    # Sector select box — now updates session_state BEFORE col_globe runs.
+    # Disabled until a country is selected (view == "country"); the widget
+    # is still rendered (rather than hidden) so the sidebar layout doesn't
+    # jump around as the user picks a country, and a caption explains why
+    # it's greyed out.
+    country_selected = st.session_state.view == "country" and st.session_state.selected_country is not None
+
+    if not country_selected:
+        st.caption("Select a country on the globe to choose a sector.")
+
+    st.session_state.selected_sector = st.selectbox(
+        "Sector",
+        options=SECTOR_OPTIONS,
+        index=SECTOR_OPTIONS.index(st.session_state.selected_sector)
+                if st.session_state.selected_sector in SECTOR_OPTIONS else 0,
+        key="sector_selectbox",
+        disabled=not country_selected,
+    )
 
 ##########################
 # --- LEFT COLUMN: GLOBE ---
@@ -434,70 +512,45 @@ with col_globe:
         f"{st.session_state.selected_site}_{bool(st.session_state.result_circle)}"
     )
 
+    # FIX: override_width was previously left unset, so the component fell
+    # back to auto-measuring its container's width in JS on mount. With the
+    # taller sidebar content shown in country view (back button, title,
+    # selection line, sector controls, etc.), that measurement could race
+    # the real layout and grab a too-small width — the "panel shrinks"
+    # symptom. Pinning override_width to "100%" removes the dependency on
+    # that measurement entirely so the panel always fills col_globe.
+    # Height also bumped up (800 -> 900) for a bigger map overall.
     selected_points = plotly_events(
         globe,
         click_event=True,
         select_event=False,
         hover_event=False,
-        override_height=800,
+        override_height=900,
+        override_width="100%",
         key=chart_key,
     )
 
 
 ##########################
-# --- RIGHT COLUMN: CONTROLS & SUMMARY ---
+# --- RIGHT COLUMN (PART 2): CONTROLS THAT DEPEND ON THE GLOBE/PLANTS ---
 ##########################
+# Runs AFTER col_globe on purpose — the sector summary and RUN button both
+# need `plants`, which is only populated once col_globe has fetched it.
 
 with col_sidebar:
-    # Back button (only when in country view)
-    if st.session_state.view == "country":
-        if st.button("⬅ Back to world view", use_container_width=True):
-            st.session_state.view = "world"
-            st.session_state.selected_country = None
-            st.session_state.selected_region = None
-            st.session_state.selected_site = None
-            st.session_state.selected_sector = 'Select sector'
-            st.session_state.result_circle = None
-            st.session_state.df_result = None
-            st.rerun()
-    
-    # Country/Region/Site info
-    if st.session_state.view == "country":
-        st.markdown(f"### {st.session_state.selected_country}")
-        
-        # Region and site are mutually exclusive — show whichever is active.
-        if st.session_state.selected_site:
-            selection_line = f"**Plant:** {st.session_state.selected_site}"
-        elif st.session_state.selected_region:
-            selection_line = f"**Region:** {st.session_state.selected_region}"
-        else:
-            selection_line = "Click a region label or a plant marker to select one"
-        
-        st.markdown(selection_line)
-        st.divider()
-    
-    # Sector select box
-    st.session_state.selected_sector = st.selectbox(
-        "Sector",
-        options=SECTOR_OPTIONS,
-        index=SECTOR_OPTIONS.index(st.session_state.selected_sector)
-                if st.session_state.selected_sector in SECTOR_OPTIONS else 0,
-        key="sector_selectbox"
-    )
-    
     # Summary info for selected country/sector
     if st.session_state.view == "country" and st.session_state.selected_sector != 'Select sector':
         if plants:  # plants is available from the globe building section above
             summary = get_sector_summary(st.session_state.selected_country, st.session_state.selected_sector, plants)
             if summary:
                 st.markdown("### Sector Summary")
-                
+
                 # Format emissions with commas
                 total_emissions_formatted = f"{summary['total_emissions']:,.0f}"
                 avg_emissions_formatted = f"{summary['avg_emissions']:,.0f}"
                 max_emissions_formatted = f"{summary['max_emissions']:,.0f}"
                 min_emissions_formatted = f"{summary['min_emissions']:,.0f}"
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Total Emissions", f"{total_emissions_formatted}")
@@ -505,19 +558,19 @@ with col_sidebar:
                 with col2:
                     st.metric("Number of Plants", f"{summary['num_plants']}")
                     st.metric("Max Emissions", f"{max_emissions_formatted}")
-                
+
                 st.divider()
         else:
             st.info("No plants found for this sector/country combination.")
-    
+
     # RUN button
     selected_country = str(st.session_state.selected_country)
     selected_region = str(st.session_state.selected_region)
     selected_site = str(st.session_state.selected_site)
     selected_sector = st.session_state.selected_sector
-    
+
     DEG_PER_KM = 1 / 111.32
-    
+
     if selected_country != 'None' and selected_sector != 'Select sector' and selected_region == 'None' and selected_site == 'None':
         st.info("Click a region label or a plant marker on the map to enable RUN.")
 
@@ -531,14 +584,14 @@ with col_sidebar:
                     "site": selected_site if selected_site != 'None' else 'None',
                 }
                 yaml.dump(data, f, default_flow_style=False)
-            
+
             with st.spinner("Work in progress..."):
                 main()
-            
+
             pipe_config = load_pipe_base_config()
             lat_col = pipe_config['source_lat_col']
             lon_col = pipe_config['source_lon_col']
-            
+
             # Which output to read back depends on which of region/site was set
             if selected_site != 'None':
                 result_key = selected_site
@@ -546,11 +599,11 @@ with col_sidebar:
                 result_key = selected_region
             else:
                 result_key = selected_country
-            
+
             result_path = f"{os.getcwd()}/output/csv/{result_key}/forest_result.csv"
             df_result = pd.read_csv(result_path)
             st.session_state.df_result = df_result
-            
+
             if selected_site != 'None':
                 row = df_result.iloc[0]
                 radius_km = float(row['new_area_radius'])
@@ -563,13 +616,13 @@ with col_sidebar:
             elif selected_region != 'None':
                 total_new_forest = float(df_result['new_forest'].sum())
                 total_radius_km = hectares_to_circle_radius(total_new_forest)
-                
+
                 if selected_region in regions_names:
                     idx = regions_names.index(selected_region)
                     center_lon, center_lat = regions_lon[idx], regions_lat[idx]
                 else:
                     center_lon, center_lat = float(df_result[lon_col].mean()), float(df_result[lat_col].mean())
-                
+
                 st.session_state.result_circle = {
                     'center_lon': center_lon,
                     'center_lat': center_lat,
@@ -578,7 +631,7 @@ with col_sidebar:
                 }
             else:
                 st.session_state.result_circle = None
-            
+
             st.rerun()
 
 
@@ -601,7 +654,7 @@ if selected_points:
     clicked = selected_points[0]
     curve_number = clicked.get('curveNumber', 0)
     point_index = clicked.get('pointIndex', 0)
-    
+
     if st.session_state.view == "world":
         # Clicked a country on the world globe -> zoom in
         if 0 <= point_index < len(highlighted_countries_names):
@@ -613,7 +666,7 @@ if selected_points:
             st.session_state.result_circle = None
             st.session_state.df_result = None
             st.rerun()
-    
+
     elif st.session_state.view == "country" and curve_number == 0:
         # Clicked a (possibly different) country while already zoomed in
         if 0 <= point_index < len(highlighted_countries_names):
@@ -626,7 +679,7 @@ if selected_points:
                 st.session_state.result_circle = None
                 st.session_state.df_result = None
                 st.rerun()
-    
+
     elif st.session_state.view == "country" and curve_number == 1:
         # Clicked a region label -> select region, clear any single-plant selection.
         # Guarded (only act if this is actually a NEW region) so a stale replay
@@ -639,7 +692,7 @@ if selected_points:
                 st.session_state.result_circle = None
                 st.session_state.df_result = None
                 st.rerun()
-    
+
     elif st.session_state.view == "country" and curve_number == 3:
         # Clicked a plant marker -> select that single plant as the "site".
         # Same idempotency guard as the region branch above, for the same reason.
